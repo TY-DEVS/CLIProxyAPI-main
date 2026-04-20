@@ -1630,7 +1630,7 @@ Prefer acting on the user's task over describing product-specific workflows.`)
 func buildTextBlock(text string, cacheControl map[string]string) string {
 	block := []byte(`{"type":"text"}`)
 	block, _ = sjson.SetBytes(block, "text", text)
-	if cacheControl != nil && len(cacheControl) > 0 {
+	if len(cacheControl) > 0 {
 		// Build cache_control JSON manually to avoid sjson map marshaling issues.
 		// sjson.SetBytes with map[string]string may not produce expected structure.
 		cc := `{"type":"ephemeral"`

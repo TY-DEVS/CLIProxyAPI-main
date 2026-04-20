@@ -41,14 +41,15 @@ import (
 )
 
 const (
-	antigravityBaseURLDaily                = "https://daily-cloudcode-pa.googleapis.com"
-	antigravitySandboxBaseURLDaily         = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityBaseURLProd                 = "https://cloudcode-pa.googleapis.com"
-	antigravityCountTokensPath             = "/v1internal:countTokens"
-	antigravityStreamPath                  = "/v1internal:streamGenerateContent"
-	antigravityGeneratePath                = "/v1internal:generateContent"
-	antigravityClientID                    = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-	antigravityClientSecret                = "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"
+	antigravityBaseURLDaily        = "https://daily-cloudcode-pa.googleapis.com"
+	antigravitySandboxBaseURLDaily = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+	antigravityBaseURLProd         = "https://cloudcode-pa.googleapis.com"
+	antigravityCountTokensPath     = "/v1internal:countTokens"
+	antigravityStreamPath          = "/v1internal:streamGenerateContent"
+	antigravityGeneratePath        = "/v1internal:generateContent"
+	antigravityClientID            = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+	antigravityClientSecret        = "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"
+	//nolint:unused // kept as fallback default
 	defaultAntigravityAgent                = "antigravity/1.21.9 darwin/arm64" // fallback only; overridden at runtime by misc.AntigravityUserAgent()
 	antigravityAuthType                    = "antigravity"
 	refreshSkew                            = 3000 * time.Second
@@ -636,6 +637,7 @@ func (e *AntigravityExecutor) attemptCreditsFallback(
 	return nil, true
 }
 
+//nolint:unused // kept for future direct-credits error handling
 func (e *AntigravityExecutor) handleDirectCreditsFailure(ctx context.Context, auth *cliproxyauth.Auth, modelName string, reqErr error) {
 	if reqErr != nil {
 		if shouldForcePermanentDisableCredits(reqErrBody(reqErr)) {
@@ -710,8 +712,8 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	if updatedAuth != nil {
 		auth = updatedAuth
 	}
-	originalTranslated := sdktranslator.TranslateRequest(from, to, baseModel, originalPayload, false)
-	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, false)
+	originalTranslated := sdktranslator.TranslateRequest(from, to, baseModel, originalPayload, true)
+	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, true)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
@@ -1096,6 +1098,7 @@ attemptLoop:
 				}()
 				scanner := bufio.NewScanner(resp.Body)
 				scanner.Buffer(nil, streamScannerBuffer)
+				var param any
 				for scanner.Scan() {
 					line := scanner.Bytes()
 					helps.AppendAPIResponseChunk(ctx, e.cfg, line)
@@ -1113,7 +1116,14 @@ attemptLoop:
 						reporter.Publish(ctx, detail)
 					}
 
-					out <- cliproxyexecutor.StreamChunk{Payload: payload}
+					chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(payload), &param)
+					for i := range chunks {
+						out <- cliproxyexecutor.StreamChunk{Payload: chunks[i]}
+					}
+				}
+				tail := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, []byte("[DONE]"), &param)
+				for i := range tail {
+					out <- cliproxyexecutor.StreamChunk{Payload: tail[i]}
 				}
 				if errScan := scanner.Err(); errScan != nil {
 					helps.RecordAPIResponseError(ctx, e.cfg, errScan)

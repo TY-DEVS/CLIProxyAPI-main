@@ -809,6 +809,7 @@ func codexCreds(a *cliproxyauth.Auth) (apiKey, baseURL string) {
 	return
 }
 
+//nolint:unused // kept for future provider-specific config resolution
 func (e *CodexExecutor) resolveCodexConfig(auth *cliproxyauth.Auth) *config.CodexKey {
 	if auth == nil || e.cfg == nil {
 		return nil

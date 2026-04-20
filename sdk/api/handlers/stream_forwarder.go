@@ -55,6 +55,8 @@ func (h *BaseAPIHandler) ForwardStream(c *gin.Context, flusher http.Flusher, can
 	}
 	var keepAlive *time.Ticker
 	var keepAliveC <-chan time.Time
+	// Note: keepAliveInterval is always > 0 (zero/negative is clamped by
+	// StreamingKeepAliveInterval), but we guard defensively.
 	if keepAliveInterval > 0 {
 		keepAlive = time.NewTicker(keepAliveInterval)
 		defer keepAlive.Stop()

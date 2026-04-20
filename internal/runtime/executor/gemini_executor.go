@@ -464,6 +464,7 @@ func resolveGeminiBaseURL(auth *cliproxyauth.Auth) string {
 	return base
 }
 
+//nolint:unused // kept for future provider-specific config resolution
 func (e *GeminiExecutor) resolveGeminiConfig(auth *cliproxyauth.Auth) *config.GeminiKey {
 	if auth == nil || e.cfg == nil {
 		return nil

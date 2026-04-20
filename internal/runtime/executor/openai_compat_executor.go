@@ -360,6 +360,7 @@ func (e *OpenAICompatExecutor) resolveCredentials(auth *cliproxyauth.Auth) (base
 	return
 }
 
+//nolint:unused // kept for future provider-specific config resolution
 func (e *OpenAICompatExecutor) resolveCompatConfig(auth *cliproxyauth.Auth) *config.OpenAICompatibility {
 	if auth == nil || e.cfg == nil {
 		return nil
@@ -387,6 +388,7 @@ func (e *OpenAICompatExecutor) resolveCompatConfig(auth *cliproxyauth.Auth) *con
 	return nil
 }
 
+//nolint:unused // kept for future model-override use
 func (e *OpenAICompatExecutor) overrideModel(payload []byte, model string) []byte {
 	if len(payload) == 0 || model == "" {
 		return payload

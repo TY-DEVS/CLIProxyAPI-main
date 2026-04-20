@@ -1060,6 +1060,8 @@ func vertexAccessToken(ctx context.Context, cfg *config.Config, auth *cliproxyau
 }
 
 // resolveVertexConfig finds the matching vertex-api-key configuration entry for the given auth.
+//
+//nolint:unused // kept for future provider-specific config resolution
 func (e *GeminiVertexExecutor) resolveVertexConfig(auth *cliproxyauth.Auth) *config.VertexCompatKey {
 	if auth == nil || e.cfg == nil {
 		return nil

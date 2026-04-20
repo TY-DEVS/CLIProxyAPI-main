@@ -16,6 +16,7 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 )
 
+//nolint:unused // kept for future Gemini signature tests
 func testGeminiSignaturePayload() string {
 	payload := append([]byte{0x0A}, bytes.Repeat([]byte{0x56}, 48)...)
 	return base64.StdEncoding.EncodeToString(payload)

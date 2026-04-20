@@ -1274,6 +1274,7 @@ func (e *CodexWebsocketsExecutor) CloseExecutionSession(sessionID string) {
 	e.closeExecutionSession(sess, "session_closed")
 }
 
+//nolint:unused // kept for executor-replacement scenario
 func (e *CodexWebsocketsExecutor) closeAllExecutionSessions(reason string) {
 	if e == nil {
 		return
