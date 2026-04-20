@@ -23,6 +23,14 @@ const (
 	DefaultRegion   = "us-east-1"
 )
 
+var authorizationScopes = []string{
+	"codewhisperer:completions",
+	"codewhisperer:analysis",
+	"codewhisperer:conversations",
+	"codewhisperer:transformations",
+	"codewhisperer:taskassist",
+}
+
 type Auth struct {
 	httpClient *http.Client
 	region     string
@@ -66,16 +74,25 @@ func GeneratePKCECodes() (*PKCECodes, error) {
 	return &PKCECodes{CodeVerifier: verifier, CodeChallenge: challenge}, nil
 }
 
-func (a *Auth) RegisterClient(ctx context.Context, clientName string) (*TokenData, error) {
+func (a *Auth) RegisterClient(ctx context.Context, clientName, redirectURI string) (*TokenData, error) {
+	redirectURI = strings.TrimSpace(redirectURI)
+	if redirectURI == "" {
+		return nil, fmt.Errorf("redirect URI is required")
+	}
+
 	body, err := a.postJSON(ctx, "/client/register", map[string]any{
-		"clientName":   clientName,
-		"clientType":   "public",
-		"startUrl":     a.startURL,
-		"startURL":     a.startURL,
-		"issuerUrl":    a.startURL,
-		"grantTypes":   []string{"refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		"scopes":       []string{"openid", "profile", "sso:account:access"},
-		"redirectUris": []string{},
+		"clientName": clientName,
+		"clientType": "public",
+		"startUrl":   a.startURL,
+		"startURL":   a.startURL,
+		"issuerUrl":  a.startURL,
+		"grantTypes": []string{
+			"authorization_code",
+			"refresh_token",
+			"urn:ietf:params:oauth:grant-type:device_code",
+		},
+		"scopes":       authorizationScopes,
+		"redirectUris": []string{redirectURI},
 	})
 	if err != nil {
 		return nil, err
@@ -121,7 +138,7 @@ func (a *Auth) GenerateAuthURL(clientID, redirectURI, state string, pkceCodes *P
 		"response_type":         {"code"},
 		"client_id":             {clientID},
 		"redirect_uri":          {redirectURI},
-		"scopes":                {"codewhisperer:completions,codewhisperer:analysis,codewhisperer:conversations,codewhisperer:transformations,codewhisperer:taskassist"},
+		"scopes":                {strings.Join(authorizationScopes, ",")},
 		"state":                 {state},
 		"code_challenge":        {pkceCodes.CodeChallenge},
 		"code_challenge_method": {"S256"},
@@ -177,6 +194,21 @@ func (a *Auth) ExchangeDeviceCode(ctx context.Context, clientID, clientSecret, d
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
+	if strings.TrimSpace(out.AccessToken) == "" {
+		out.AccessToken = strings.TrimSpace(out.AccessTokenCamel)
+	}
+	if strings.TrimSpace(out.RefreshToken) == "" {
+		out.RefreshToken = strings.TrimSpace(out.RefreshTokenCamel)
+	}
+	if strings.TrimSpace(out.IDToken) == "" {
+		out.IDToken = strings.TrimSpace(out.IDTokenCamel)
+	}
+	if strings.TrimSpace(out.TokenType) == "" {
+		out.TokenType = strings.TrimSpace(out.TokenTypeCamel)
+	}
+	if out.ExpiresIn <= 0 {
+		out.ExpiresIn = out.ExpiresInCamel
+	}
 	out.Region = a.region
 	out.StartURL = a.startURL
 	out.ConnectionType = "builderId"
@@ -207,6 +239,21 @@ func (a *Auth) ExchangeAuthorizationCode(ctx context.Context, clientID, clientSe
 	var out TokenData
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("failed to parse authorization code token response: %w", err)
+	}
+	if strings.TrimSpace(out.AccessToken) == "" {
+		out.AccessToken = strings.TrimSpace(out.AccessTokenCamel)
+	}
+	if strings.TrimSpace(out.RefreshToken) == "" {
+		out.RefreshToken = strings.TrimSpace(out.RefreshTokenCamel)
+	}
+	if strings.TrimSpace(out.IDToken) == "" {
+		out.IDToken = strings.TrimSpace(out.IDTokenCamel)
+	}
+	if strings.TrimSpace(out.TokenType) == "" {
+		out.TokenType = strings.TrimSpace(out.TokenTypeCamel)
+	}
+	if out.ExpiresIn <= 0 {
+		out.ExpiresIn = out.ExpiresInCamel
 	}
 	out.Region = a.region
 	out.StartURL = a.startURL

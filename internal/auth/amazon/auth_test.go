@@ -33,7 +33,7 @@ func TestRegisterClientUsesConfiguredStartURLAndRegion(t *testing.T) {
 	auth.baseURL = srv.URL
 	auth.region = "unit-test"
 
-	registration, err := auth.RegisterClient(context.Background(), "CLIProxyAPI-test")
+	registration, err := auth.RegisterClient(context.Background(), "CLIProxyAPI-test", "http://127.0.0.1:53759/oauth/callback")
 	if err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
@@ -43,6 +43,12 @@ func TestRegisterClientUsesConfiguredStartURLAndRegion(t *testing.T) {
 	}
 	if !strings.Contains(seenBody, `"startUrl":"https://view.awsapps.com/start"`) {
 		t.Fatalf("expected request body to include configured startUrl, body = %s", seenBody)
+	}
+	if !strings.Contains(seenBody, `"authorization_code"`) {
+		t.Fatalf("expected request body to include authorization_code grant, body = %s", seenBody)
+	}
+	if !strings.Contains(seenBody, `"redirectUris":["http://127.0.0.1:53759/oauth/callback"]`) {
+		t.Fatalf("expected request body to include redirect URI, body = %s", seenBody)
 	}
 	if registration.Region != "unit-test" {
 		t.Fatalf("expected region unit-test, got %q", registration.Region)
@@ -92,7 +98,7 @@ func TestExchangeDeviceCodeSetsExpiryAndConnectionType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("time.Parse() error = %v", err)
 	}
-	if expiresAt.Before(before.Add(59 * time.Minute)) || expiresAt.After(before.Add(61*time.Minute)) {
+	if expiresAt.Before(before.Add(59*time.Minute)) || expiresAt.After(before.Add(61*time.Minute)) {
 		t.Fatalf("expected expiry about one hour ahead, got %s", expiresAt.Format(time.RFC3339))
 	}
 	if bundle.TokenData.LastRefresh == "" {
@@ -197,7 +203,7 @@ func TestExchangeAuthorizationCodeSetsExpiryAndConnectionType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("time.Parse() error = %v", err)
 	}
-	if expiresAt.Before(before.Add(59 * time.Minute)) || expiresAt.After(before.Add(61*time.Minute)) {
+	if expiresAt.Before(before.Add(59*time.Minute)) || expiresAt.After(before.Add(61*time.Minute)) {
 		t.Fatalf("expected expiry about one hour ahead, got %s", expiresAt.Format(time.RFC3339))
 	}
 }

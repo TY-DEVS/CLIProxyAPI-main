@@ -45,7 +45,7 @@ var lastRefreshKeys = []string{"last_refresh", "lastRefresh", "last_refreshed_at
 
 const (
 	anthropicCallbackPort = 54545
-	amazonCallbackPort     = 53759
+	amazonCallbackPort    = 53759
 	amazonPollInterval    = 5 * time.Second
 	geminiCallbackPort    = 8085
 	codexCallbackPort     = 1455
@@ -66,8 +66,10 @@ func (h *Handler) RequestAmazonToken(c *gin.Context) {
 		return
 	}
 
+	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/oauth/callback", amazonCallbackPort)
+
 	clientName := fmt.Sprintf("CLIProxyAPI-%d", time.Now().Unix())
-	registration, errRegister := authSvc.RegisterClient(ctx, clientName)
+	registration, errRegister := authSvc.RegisterClient(ctx, clientName, redirectURI)
 	if errRegister != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to register amazon oidc client: %v", errRegister)})
 		return
@@ -79,8 +81,6 @@ func (h *Handler) RequestAmazonToken(c *gin.Context) {
 		return
 	}
 	RegisterOAuthSession(state, "amazon")
-
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/oauth/callback", amazonCallbackPort)
 	authURL, errURL := authSvc.GenerateAuthURL(registration.ClientID, redirectURI, state, pkceCodes)
 	if errURL != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate amazon authorization url: %v", errURL)})
@@ -189,9 +189,9 @@ func (h *Handler) RequestAmazonToken(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":    "ok",
-		"url":       authURL,
-		"state":     state,
+		"status": "ok",
+		"url":    authURL,
+		"state":  state,
 	})
 }
 

@@ -30,10 +30,15 @@ type deviceAuthorizationResponseWire struct {
 
 type TokenData struct {
 	AccessToken           string `json:"access_token"`
+	AccessTokenCamel      string `json:"accessToken,omitempty"`
 	RefreshToken          string `json:"refresh_token"`
+	RefreshTokenCamel     string `json:"refreshToken,omitempty"`
 	IDToken               string `json:"id_token,omitempty"`
+	IDTokenCamel          string `json:"idToken,omitempty"`
 	TokenType             string `json:"token_type,omitempty"`
+	TokenTypeCamel        string `json:"tokenType,omitempty"`
 	ExpiresIn             int    `json:"expires_in,omitempty"`
+	ExpiresInCamel        int    `json:"expiresIn,omitempty"`
 	Expired               string `json:"expired,omitempty"`
 	Region                string `json:"region,omitempty"`
 	StartURL              string `json:"start_url,omitempty"`
