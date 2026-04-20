@@ -1,0 +1,11 @@
+host: 127.0.0.1
+port: 8317
+auth-dir: "c:\\Users\\amine\\Desktop\\Nouveau dossier\\Cli-Proxy-API-Management-Center\\docker\\backend\\auth"
+remote-management:
+  allow-remote: true
+  secret-key: "$2a$10$xhBe01jn2I2egUuo20BNE.UjUkbtoeDC6Qe4ls0qQD5yI/Jf76U9."
+  disable-control-panel: true
+api-keys: []
+debug: true
+logging-to-file: false
+usage-statistics-enabled: true
