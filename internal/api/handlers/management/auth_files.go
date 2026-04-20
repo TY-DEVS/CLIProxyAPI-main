@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/amazon"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/antigravity"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/codex"
@@ -41,170 +40,16 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-type amazonListAvailableModelsResponse struct {
-	Models []struct {
-		ModelID   string `json:"modelId"`
-		ModelName string `json:"modelName"`
-	} `json:"models"`
-	DefaultModel struct {
-		ModelID   string `json:"modelId"`
-		ModelName string `json:"modelName"`
-	} `json:"defaultModel"`
-}
-
 var lastRefreshKeys = []string{"last_refresh", "lastRefresh", "last_refreshed_at", "lastRefreshedAt"}
 
 const (
 	anthropicCallbackPort = 54545
 	amazonCallbackPort    = 53759
-	amazonPollInterval    = 5 * time.Second
 	geminiCallbackPort    = 8085
 	codexCallbackPort     = 1455
 	geminiCLIEndpoint     = "https://cloudcode-pa.googleapis.com"
 	geminiCLIVersion      = "v1internal"
 )
-
-func (h *Handler) RequestAmazonToken(c *gin.Context) {
-	ctx := context.Background()
-	ctx = PopulateAuthContext(ctx, c)
-
-	region := strings.TrimSpace(c.Query("region"))
-	startURL := strings.TrimSpace(c.Query("start_url"))
-	authSvc := amazon.NewAuth(h.cfg, region, startURL)
-	pkceCodes, errPKCE := amazon.GeneratePKCECodes()
-	if errPKCE != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate amazon pkce codes: %v", errPKCE)})
-		return
-	}
-
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/oauth/callback", amazonCallbackPort)
-
-	clientName := fmt.Sprintf("CLIProxyAPI-%d", time.Now().Unix())
-	registration, errRegister := authSvc.RegisterClient(ctx, clientName, redirectURI)
-	if errRegister != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to register amazon oidc client: %v", errRegister)})
-		return
-	}
-
-	state, errState := misc.GenerateRandomState()
-	if errState != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate amazon state: %v", errState)})
-		return
-	}
-	RegisterOAuthSession(state, "amazon")
-	authURL, errURL := authSvc.GenerateAuthURL(registration.ClientID, redirectURI, state, pkceCodes)
-	if errURL != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate amazon authorization url: %v", errURL)})
-		return
-	}
-
-	isWebUI := isWebUIRequest(c)
-	var forwarder *callbackForwarder
-	if isWebUI {
-		targetURL, errTarget := h.managementCallbackURL("/amazon/oauth/callback")
-		if errTarget != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "callback server unavailable"})
-			return
-		}
-		var errStart error
-		if forwarder, errStart = startCallbackForwarder(amazonCallbackPort, "amazon", targetURL); errStart != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start callback server"})
-			return
-		}
-	}
-
-	go func() {
-		if isWebUI {
-			defer stopCallbackForwarderInstance(amazonCallbackPort, forwarder)
-		}
-		deadline := time.Now().Add(10 * time.Minute)
-		waitFile := filepath.Join(h.cfg.AuthDir, fmt.Sprintf(".oauth-amazon-%s.oauth", state))
-		for {
-			if !IsOAuthSessionPending(state, "amazon") {
-				return
-			}
-			if time.Now().After(deadline) {
-				SetOAuthSessionError(state, "Amazon OAuth flow timed out")
-				return
-			}
-
-			if data, errRead := os.ReadFile(waitFile); errRead == nil {
-				var result map[string]string
-				_ = json.Unmarshal(data, &result)
-				_ = os.Remove(waitFile)
-				if errStr := strings.TrimSpace(result["error"]); errStr != "" {
-					SetOAuthSessionError(state, errStr)
-					return
-				}
-				if strings.TrimSpace(result["state"]) != state {
-					SetOAuthSessionError(state, "Amazon OAuth state mismatch")
-					return
-				}
-				code := strings.TrimSpace(result["code"])
-				if code == "" {
-					SetOAuthSessionError(state, "Amazon OAuth code missing")
-					return
-				}
-
-				bundle, errExchange := authSvc.ExchangeAuthorizationCode(ctx, registration.ClientID, registration.ClientSecret, code, redirectURI, pkceCodes)
-				if errExchange != nil {
-					SetOAuthSessionError(state, errExchange.Error())
-					return
-				}
-
-				storage := &amazon.TokenStorage{
-					AccessToken:           bundle.TokenData.AccessToken,
-					RefreshToken:          bundle.TokenData.RefreshToken,
-					IDToken:               bundle.TokenData.IDToken,
-					TokenType:             bundle.TokenData.TokenType,
-					Expired:               bundle.TokenData.Expired,
-					Region:                bundle.TokenData.Region,
-					StartURL:              bundle.TokenData.StartURL,
-					ClientID:              registration.ClientID,
-					ClientSecret:          registration.ClientSecret,
-					RegistrationExpiresAt: registration.RegistrationExpiresAt,
-					ConnectionType:        bundle.TokenData.ConnectionType,
-					LastRefresh:           bundle.TokenData.LastRefresh,
-				}
-
-				record := &coreauth.Auth{
-					ID:       fmt.Sprintf("amazon-%d.json", time.Now().UnixMilli()),
-					Provider: "amazon",
-					FileName: fmt.Sprintf("amazon-%d.json", time.Now().UnixMilli()),
-					Label:    "Amazon Q",
-					Storage:  storage,
-					Metadata: map[string]any{
-						"region":                  bundle.TokenData.Region,
-						"start_url":               bundle.TokenData.StartURL,
-						"connection_type":         bundle.TokenData.ConnectionType,
-						"expired":                 bundle.TokenData.Expired,
-						"last_refresh":            bundle.TokenData.LastRefresh,
-						"client_id":               registration.ClientID,
-						"client_secret":           registration.ClientSecret,
-						"registration_expires_at": registration.RegistrationExpiresAt,
-					},
-				}
-
-				if _, errSave := h.saveTokenRecord(ctx, record); errSave != nil {
-					SetOAuthSessionError(state, fmt.Sprintf("failed to save amazon authentication tokens: %v", errSave))
-					return
-				}
-
-				CompleteOAuthSession(state)
-				CompleteOAuthSessionsByProvider("amazon")
-				return
-			}
-
-			time.Sleep(500 * time.Millisecond)
-		}
-	}()
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "ok",
-		"url":    authURL,
-		"state":  state,
-	})
-}
 
 type callbackForwarder struct {
 	provider string
@@ -484,74 +329,6 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"models": result})
-}
-
-func (h *Handler) fetchAmazonModels(ctx context.Context, auth *coreauth.Auth) []*registry.ModelInfo {
-	if auth == nil {
-		return nil
-	}
-
-	token, errToken := h.resolveTokenForAuth(ctx, auth)
-	if errToken != nil || strings.TrimSpace(token) == "" {
-		return nil
-	}
-
-	requestBody, errMarshal := json.Marshal(map[string]any{
-		"origin":     "CLI",
-		"maxResults": 50,
-	})
-	if errMarshal != nil {
-		return nil
-	}
-
-	req, errReq := http.NewRequestWithContext(ctx, http.MethodPost, "https://codewhisperer.us-east-1.amazonaws.com/?origin=CLI", bytes.NewReader(requestBody))
-	if errReq != nil {
-		return nil
-	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
-	req.Header.Set("X-Amz-Target", "AmazonCodeWhispererService.ListAvailableModels")
-
-	httpClient := &http.Client{
-		Timeout:   defaultAPICallTimeout,
-		Transport: h.apiCallTransport(auth),
-	}
-	resp, errDo := httpClient.Do(req)
-	if errDo != nil {
-		return nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil
-	}
-
-	body, errRead := io.ReadAll(resp.Body)
-	if errRead != nil {
-		return nil
-	}
-
-	var payload amazonListAvailableModelsResponse
-	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
-		return nil
-	}
-
-	models := make([]*registry.ModelInfo, 0, len(payload.Models))
-	for _, model := range payload.Models {
-		id := strings.TrimSpace(model.ModelID)
-		if id == "" {
-			continue
-		}
-		models = append(models, &registry.ModelInfo{
-			ID:          id,
-			Object:      "model",
-			OwnedBy:     "amazon",
-			Type:        "amazon",
-			DisplayName: strings.TrimSpace(model.ModelName),
-		})
-	}
-
-	return models
 }
 
 // List auth files from disk when the auth manager is unavailable.
@@ -1213,18 +990,6 @@ func (h *Handler) authIDForPath(path string) string {
 	}
 	return id
 }
-
-func (h *Handler) registerAuthFromFile(ctx context.Context, path string, data []byte) error {
-	if h.authManager == nil {
-		return nil
-	}
-	auth, err := h.buildAuthFromFileData(path, data)
-	if err != nil {
-		return err
-	}
-	return h.upsertAuthRecord(ctx, auth)
-}
-
 func (h *Handler) buildAuthFromFileData(path string, data []byte) (*coreauth.Auth, error) {
 	if path == "" {
 		return nil, fmt.Errorf("auth path is empty")

@@ -266,6 +266,55 @@ func (a *Auth) ExchangeAuthorizationCode(ctx context.Context, clientID, clientSe
 	return &AuthBundle{TokenData: out}, nil
 }
 
+func (a *Auth) RefreshTokens(ctx context.Context, clientID, clientSecret, refreshToken string) (*AuthBundle, error) {
+	refreshToken = strings.TrimSpace(refreshToken)
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh token is required")
+	}
+
+	body, err := a.postJSON(ctx, "/token", map[string]any{
+		"clientId":     clientID,
+		"clientSecret": clientSecret,
+		"grantType":    "refresh_token",
+		"refreshToken": refreshToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var out TokenData
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse refresh token response: %w", err)
+	}
+	if strings.TrimSpace(out.AccessToken) == "" {
+		out.AccessToken = strings.TrimSpace(out.AccessTokenCamel)
+	}
+	if strings.TrimSpace(out.RefreshToken) == "" {
+		out.RefreshToken = strings.TrimSpace(out.RefreshTokenCamel)
+	}
+	if strings.TrimSpace(out.IDToken) == "" {
+		out.IDToken = strings.TrimSpace(out.IDTokenCamel)
+	}
+	if strings.TrimSpace(out.TokenType) == "" {
+		out.TokenType = strings.TrimSpace(out.TokenTypeCamel)
+	}
+	if out.ExpiresIn <= 0 {
+		out.ExpiresIn = out.ExpiresInCamel
+	}
+	if strings.TrimSpace(out.RefreshToken) == "" {
+		out.RefreshToken = refreshToken
+	}
+	out.Region = a.region
+	out.StartURL = a.startURL
+	out.ConnectionType = "builderId"
+	out.LastRefresh = time.Now().Format(time.RFC3339)
+	if out.ExpiresIn > 0 {
+		out.Expired = time.Now().Add(time.Duration(out.ExpiresIn) * time.Second).Format(time.RFC3339)
+	}
+
+	return &AuthBundle{TokenData: out}, nil
+}
+
 func (a *Auth) postJSON(ctx context.Context, path string, payload map[string]any) ([]byte, error) {
 	rawBody, err := json.Marshal(payload)
 	if err != nil {
