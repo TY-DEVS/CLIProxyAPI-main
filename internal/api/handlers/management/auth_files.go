@@ -41,6 +41,17 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+type amazonListAvailableModelsResponse struct {
+	Models []struct {
+		ModelID   string `json:"modelId"`
+		ModelName string `json:"modelName"`
+	} `json:"models"`
+	DefaultModel struct {
+		ModelID   string `json:"modelId"`
+		ModelName string `json:"modelName"`
+	} `json:"defaultModel"`
+}
+
 var lastRefreshKeys = []string{"last_refresh", "lastRefresh", "last_refreshed_at", "lastRefreshedAt"}
 
 const (
@@ -413,6 +424,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 		return
 	}
 
+	var matchedAuth *coreauth.Auth
 	// Try to find auth ID via authManager
 	var authID string
 	if h.authManager != nil {
@@ -420,6 +432,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 		for _, auth := range auths {
 			if auth.FileName == name || auth.ID == name {
 				authID = auth.ID
+				matchedAuth = auth
 				break
 			}
 		}
@@ -432,6 +445,26 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 	// Get models from registry
 	reg := registry.GetGlobalRegistry()
 	models := reg.GetModelsForClient(authID)
+	if len(models) == 0 && matchedAuth != nil && strings.EqualFold(strings.TrimSpace(matchedAuth.Provider), "amazon") {
+		if dynamicModels := h.fetchAmazonModels(c.Request.Context(), matchedAuth); len(dynamicModels) > 0 {
+			models = dynamicModels
+		}
+	}
+	if len(models) == 0 && h.authManager != nil {
+		auths := h.authManager.List()
+		for _, auth := range auths {
+			if auth == nil {
+				continue
+			}
+			if auth.FileName != name && auth.ID != name && auth.ID != authID {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(auth.Provider), "amazon") {
+				models = registry.GetStaticModelDefinitionsByChannel("amazon")
+			}
+			break
+		}
+	}
 
 	result := make([]gin.H, 0, len(models))
 	for _, m := range models {
@@ -451,6 +484,74 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"models": result})
+}
+
+func (h *Handler) fetchAmazonModels(ctx context.Context, auth *coreauth.Auth) []*registry.ModelInfo {
+	if auth == nil {
+		return nil
+	}
+
+	token, errToken := h.resolveTokenForAuth(ctx, auth)
+	if errToken != nil || strings.TrimSpace(token) == "" {
+		return nil
+	}
+
+	requestBody, errMarshal := json.Marshal(map[string]any{
+		"origin":     "CLI",
+		"maxResults": 50,
+	})
+	if errMarshal != nil {
+		return nil
+	}
+
+	req, errReq := http.NewRequestWithContext(ctx, http.MethodPost, "https://codewhisperer.us-east-1.amazonaws.com/?origin=CLI", bytes.NewReader(requestBody))
+	if errReq != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
+	req.Header.Set("X-Amz-Target", "AmazonCodeWhispererService.ListAvailableModels")
+
+	httpClient := &http.Client{
+		Timeout:   defaultAPICallTimeout,
+		Transport: h.apiCallTransport(auth),
+	}
+	resp, errDo := httpClient.Do(req)
+	if errDo != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil
+	}
+
+	body, errRead := io.ReadAll(resp.Body)
+	if errRead != nil {
+		return nil
+	}
+
+	var payload amazonListAvailableModelsResponse
+	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
+		return nil
+	}
+
+	models := make([]*registry.ModelInfo, 0, len(payload.Models))
+	for _, model := range payload.Models {
+		id := strings.TrimSpace(model.ModelID)
+		if id == "" {
+			continue
+		}
+		models = append(models, &registry.ModelInfo{
+			ID:          id,
+			Object:      "model",
+			OwnedBy:     "amazon",
+			Type:        "amazon",
+			DisplayName: strings.TrimSpace(model.ModelName),
+		})
+	}
+
+	return models
 }
 
 // List auth files from disk when the auth manager is unavailable.

@@ -20,6 +20,7 @@ type staticModelsJSON struct {
 	IFlow       []*ModelInfo `json:"iflow"`
 	Kimi        []*ModelInfo `json:"kimi"`
 	Antigravity []*ModelInfo `json:"antigravity"`
+	Amazon      []*ModelInfo `json:"amazon"`
 }
 
 // GetClaudeModels returns the standard Claude model definitions.
@@ -82,6 +83,45 @@ func GetAntigravityModels() []*ModelInfo {
 	return cloneModelInfos(getModels().Antigravity)
 }
 
+// GetAmazonModels returns model definitions for Amazon Q Developer.
+func GetAmazonModels() []*ModelInfo {
+	models := cloneModelInfos(getModels().Amazon)
+	if len(models) > 0 {
+		return models
+	}
+
+	return []*ModelInfo{
+		{
+			ID:          "amazon-q-developer",
+			Object:      "model",
+			OwnedBy:     "amazon",
+			Type:        "amazon",
+			DisplayName: "Amazon Q Developer",
+		},
+		{
+			ID:          "claude-sonnet-4",
+			Object:      "model",
+			OwnedBy:     "amazon",
+			Type:        "amazon",
+			DisplayName: "Claude Sonnet 4",
+		},
+		{
+			ID:          "claude-3.7-sonnet",
+			Object:      "model",
+			OwnedBy:     "amazon",
+			Type:        "amazon",
+			DisplayName: "Claude 3.7 Sonnet",
+		},
+		{
+			ID:          "amazon-q-transform",
+			Object:      "model",
+			OwnedBy:     "amazon",
+			Type:        "amazon",
+			DisplayName: "Amazon Q Transform",
+		},
+	}
+}
+
 // cloneModelInfos returns a shallow copy of the slice with each element deep-cloned.
 func cloneModelInfos(models []*ModelInfo) []*ModelInfo {
 	if len(models) == 0 {
@@ -107,6 +147,7 @@ func cloneModelInfos(models []*ModelInfo) []*ModelInfo {
 //   - iflow
 //   - kimi
 //   - antigravity
+//   - amazon
 func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 	key := strings.ToLower(strings.TrimSpace(channel))
 	switch key {
@@ -128,6 +169,8 @@ func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 		return GetKimiModels()
 	case "antigravity":
 		return GetAntigravityModels()
+	case "amazon":
+		return GetAmazonModels()
 	default:
 		return nil
 	}
@@ -151,6 +194,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		data.IFlow,
 		data.Kimi,
 		data.Antigravity,
+		data.Amazon,
 	}
 	for _, models := range allModels {
 		for _, m := range models {
