@@ -639,7 +639,8 @@ func (e *CodexExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*
 
 func (e *CodexExecutor) cacheHelper(ctx context.Context, from sdktranslator.Format, url string, req cliproxyexecutor.Request, rawJSON []byte) (*http.Request, error) {
 	var cache helps.CodexCache
-	if from == "claude" {
+	switch from {
+	case "claude":
 		userIDResult := gjson.GetBytes(req.Payload, "metadata.user_id")
 		if userIDResult.Exists() {
 			key := fmt.Sprintf("%s-%s", req.Model, userIDResult.String())
@@ -652,12 +653,12 @@ func (e *CodexExecutor) cacheHelper(ctx context.Context, from sdktranslator.Form
 				helps.SetCodexCache(key, cache)
 			}
 		}
-	} else if from == "openai-response" {
+	case "openai-response":
 		promptCacheKey := gjson.GetBytes(req.Payload, "prompt_cache_key")
 		if promptCacheKey.Exists() {
 			cache.ID = promptCacheKey.String()
 		}
-	} else if from == "openai" {
+	case "openai":
 		if apiKey := strings.TrimSpace(helps.APIKeyFromContext(ctx)); apiKey != "" {
 			cache.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("cli-proxy-api:codex:prompt-cache:"+apiKey)).String()
 		}

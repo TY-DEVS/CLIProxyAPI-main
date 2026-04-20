@@ -780,7 +780,8 @@ func applyCodexPromptCacheHeaders(from sdktranslator.Format, req cliproxyexecuto
 	}
 
 	var cache helps.CodexCache
-	if from == "claude" {
+	switch from {
+	case "claude":
 		userIDResult := gjson.GetBytes(req.Payload, "metadata.user_id")
 		if userIDResult.Exists() {
 			key := fmt.Sprintf("%s-%s", req.Model, userIDResult.String())
@@ -794,7 +795,7 @@ func applyCodexPromptCacheHeaders(from sdktranslator.Format, req cliproxyexecuto
 				helps.SetCodexCache(key, cache)
 			}
 		}
-	} else if from == "openai-response" {
+	case "openai-response":
 		if promptCacheKey := gjson.GetBytes(req.Payload, "prompt_cache_key"); promptCacheKey.Exists() {
 			cache.ID = promptCacheKey.String()
 		}
